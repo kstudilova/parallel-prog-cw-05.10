@@ -1,6 +1,31 @@
 #include <windows.h>
 #include <iostream>
 #include <string>
+#include <cstddef>
+#include <algorithm>
+
+DWORD send(DWORD& err, HANDLE wr, const char* b, DWORD k)
+{
+  DWORD r = 0;
+  DWORD h = 0;
+
+  while (r < k)
+  {
+    if (!WriteFile(wr, b + r, k - r, &h, NULL))
+    {
+      err = GetLastError();
+      break;
+    }
+
+    if (h == 0)
+    {
+      err = ERROR_WRITE_FAULT;
+      break;
+    }
+    r += h;
+  }
+  return r;
+}
 
 int main(int argc, char** argv)
 {
@@ -48,6 +73,26 @@ int main(int argc, char** argv)
   }
 
   CloseHandle(rd);
+
+  DWORD err = 0;
+  size_t pos = 0;
+
+  while (pos < msg.size())
+  {
+    DWORD k = static_cast< DWORD >(std::min< size_t >(4096, msg.size() - pos));
+
+    if (send(err, wr, msg.data() + pos, k) != k)
+    {
+      std::cerr << err << '\n';
+      CloseHandle(wr);
+      WaitForSingleObject(pi.hProcess, INFINITE);
+      CloseHandle(pi.hThread);
+      CloseHandle(pi.hProcess);
+      return 1;
+    }
+    pos += k;
+  }
+
   CloseHandle(wr);
 
   DWORD w = WaitForSingleObject(pi.hProcess, INFINITE);
